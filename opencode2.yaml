@@ -2,9 +2,13 @@
 # OpenCode v2 as a WORKLOAD, derived from the opencode example of
 # docker/sandbox-kit-spec (which ships 1.x): the template image as content
 # with opencode replaced by the v2 package (@opencode/cli), seven optional
-# provider credentials (ChatGPT OAuth included, rendered for opencode's
-# codex auth plugin), the broad egress the multi-provider agent needs, and
-# the MCP seed.
+# proxy-managed provider API keys, the broad egress the multi-provider
+# agent needs, and the MCP seed.
+#
+# Unlike the 1.x example, there is no proxy-managed ChatGPT OAuth: v2 keeps
+# credentials in opencode.db and reads the legacy auth.json only in a
+# one-time migration of an existing 1.x database, never on a fresh one, so
+# a rendered credential file would never be seen.
 #
 # Version policy: one OpenCode release per build, pinned by the `version`
 # arg and checked exactly by the recipe; self-update is off in the image so
@@ -38,12 +42,14 @@ capabilities:
   - type: com.docker.sandbox/sbx@1
 
   # Every domain a credential injects into, the OpenAI OAuth endpoint
-  # and resource host, and the non-credential domains
-  # opencode needs (its site/config schema, npm for MCP/plugin installs,
-  # GitHub release assets for LSP auto-install — the githubusercontent
-  # zone via the documented single-label wildcard, since assets 302 to its
-  # subdomains), and the template's apt mirrors (a workload owns its
-  # base).
+  # and Codex backend host (for a ChatGPT login done inside the sandbox
+  # with `opencode auth login`), and the non-credential domains opencode
+  # needs (opencode.ai for `opencode upgrade` and the free models, its
+  # model catalog at models.opencode.ai via the wildcard, npm for
+  # MCP/plugin installs and manual upgrades, GitHub release assets for LSP
+  # auto-install — the githubusercontent zone via the documented
+  # single-label wildcard, since assets 302 to its subdomains), and the
+  # template's apt mirrors (a workload owns its base).
   - type: com.docker.sandbox/network-policy@1
     config:
       runtime:
@@ -128,14 +134,11 @@ capabilities:
         proxyManaged: true
         inject:
           - {domain: api.groq.com, header: Authorization, format: "Bearer %s"}
-  # A ChatGPT-subscription token is only accepted at the Codex backend
-  # host. OpenCode's codex auth plugin keys off an "openai" oauth entry in
-  # auth.json, rewrites /v1/responses to chatgpt.com/backend-api/codex,
-  # and sends the entry's access value as the bearer — the sentinel below
-  # is what reaches the proxy for substitution.
+  # API key only: the 1.x example's oauth block rendered a ChatGPT token
+  # into auth.json, which v2 does not read (see the header comment).
   - type: com.docker.sandbox/credential@1
     optional: true
-    description: OpenAI API access (API key or ChatGPT OAuth)
+    description: OpenAI API access
     config:
       service: openai
       phase: runtime
@@ -145,21 +148,6 @@ capabilities:
         inject:
           - {domain: api.openai.com, header: Authorization, format: "Bearer %s"}
           - {domain: openai.com, header: Authorization, format: "Bearer %s"}
-      oauth:
-        tokenEndpoint: {host: auth.openai.com, path: /oauth/token}
-        resourceHosts:
-          - chatgpt.com
-        sentinels:
-          accessToken: oai-oat01-proxy-managed
-          refreshToken: oai-ort01-proxy-managed
-        credentialFile:
-          path: "~/.local/share/opencode/auth.json"
-          structure:
-            openai:
-              type: oauth
-              access: "{{.AccessToken}}"
-              refresh: "{{.RefreshToken}}"
-              expires: "{{.ExpiresAt}}"
   - type: com.docker.sandbox/credential@1
     optional: true
     description: Anthropic API access
@@ -211,8 +199,11 @@ capabilities:
         # overwritten: startup runs on every boot, and opencode.json is
         # the agent's main config, so truncating it would delete user
         # settings and other MCP servers. Deep merge updates only the
-        # mcp.mcp-gateway entry; write-temp + rename keeps a crash from
-        # leaving a half-written file. No-op when MCP isn't enabled.
+        # mcp.servers.mcp-gateway entry; write-temp + rename keeps a crash
+        # from leaving a half-written file. No-op when MCP isn't enabled.
+        # The fragment uses v2's canonical shape, the one `opencode mcp add`
+        # writes (mcp.servers.<name>, no `enabled`, no `$schema`): v2 still
+        # accepts the 1.x shape, but mixing both in one file is ambiguous.
         - command: |
             set -e
             [ -n "$MCP_GATEWAY_URL" ] || exit 0
@@ -220,7 +211,7 @@ capabilities:
             cfg="$HOME/.config/opencode/opencode.json"
             frag=/tmp/sandbox-mcp-gateway.json
             jq -n --arg url "$MCP_GATEWAY_URL" --arg auth "Bearer $MCP_SENTINEL_TOKEN_NAME" \
-              '{"$schema": "https://opencode.ai/config.json", mcp: {"mcp-gateway": {type: "remote", url: $url, enabled: true, headers: {Authorization: $auth}}}}' > "$frag"
+              '{mcp: {servers: {"mcp-gateway": {type: "remote", url: $url, headers: {Authorization: $auth}}}}}' > "$frag"
             [ -f "$cfg" ] || echo '{}' > "$cfg"
             jq -s '.[0] * .[1]' "$cfg" "$frag" > "$cfg.tmp"
             mv "$cfg.tmp" "$cfg"
@@ -250,9 +241,11 @@ capabilities:
 
   # opencode speaks ACP itself, so the adapter is the agent binary. It
   # reads the same opencode.json the TUI does and starts sessions in the
-  # same `build` mode, with `plan` offered as the stricter session mode.
+  # same `build` mode; in v2, session/new offers `plan` as the stricter
+  # mode through its `mode` config option (not the older `modes` field).
   # session/new returns the native ses_… id that `--session` resumes, and
-  # stdin EOF and SIGTERM each end the process well inside five seconds.
+  # stdin EOF and SIGTERM each end the process well inside five seconds
+  # (measured on 2.1.2: ~10 ms and ~50 ms).
   - type: com.docker.sandbox/acp@1
     optional: true
     description: Drive opencode sessions over the Agent Client Protocol
@@ -275,6 +268,7 @@ capabilities:
       content: |
         # OpenCode
 
-        This sandbox runs OpenCode v2, a multi-provider coding agent. Provider keys
-        are proxy-managed sentinels; ChatGPT-subscription OAuth renders into
-        ~/.local/share/opencode/auth.json for OpenCode's codex auth plugin.
+        This sandbox runs OpenCode v2, a multi-provider coding agent. Provider
+        API keys are proxy-managed sentinels in the usual environment variables
+        (ANTHROPIC_API_KEY, OPENAI_API_KEY, ...); the proxy substitutes the real
+        values on the provider hosts.

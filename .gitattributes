@@ -1,0 +1,6 @@
+# Shell scripts run under bash (Git Bash or WSL on a Windows host), and the
+# kit files are read by the BuildKit frontend: keep LF line endings even on
+# Windows checkouts with core.autocrlf enabled.
+*.sh text eol=lf
+*.yaml text eol=lf
+*.dockerfile text eol=lf

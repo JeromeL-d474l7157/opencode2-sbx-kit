@@ -1,7 +1,7 @@
 # syntax=docker/sandbox-kit:3
 # OpenCode v2 as a WORKLOAD, derived from the opencode example of
 # docker/sandbox-kit-spec (which ships 1.x): the template image as content
-# with opencode replaced by the v2 package (@opencode/cli), seven optional
+# with opencode replaced by the v2 package (@opencode/cli), nine optional
 # proxy-managed provider API keys, the broad egress the multi-provider
 # agent needs, and the MCP seed.
 #
@@ -17,7 +17,7 @@ schemaVersion: "3"
 displayName: OpenCode v2
 description: >-
   OpenCode v2 as a complete workload: the sandbox-templates base with
-  @opencode/cli pinned to one release, seven optional proxy-managed
+  @opencode/cli pinned to one release, nine optional proxy-managed
   provider credentials, scoped egress, and the MCP seed.
 sourceUrl: https://github.com/anomalyco/opencode
 
@@ -72,6 +72,7 @@ capabilities:
           - oauth2.googleapis.com:443
           - vertexai.googleapis.com:443
           - api.groq.com:443
+          - api.mistral.ai:443
           - api.openai.com:443
           - openai.com:443
           - auth.openai.com:443
@@ -87,7 +88,9 @@ capabilities:
           - download.docker.com:443
   # Multi-provider credentials, each optional and proxy-managed where a
   # well-known env var exists. The github credential mirrors the copilot
-  # kit: one auth format per service, Bearer throughout.
+  # kit: one auth format per service, Bearer throughout. The API keys are
+  # injected on their API hosts only, not on the providers' web or OAuth
+  # hosts that the network policy also allows.
   - type: com.docker.sandbox/credential@1
     optional: true
     description: GitHub and Copilot access
@@ -119,10 +122,7 @@ capabilities:
         name: GOOGLE_GENERATIVE_AI_API_KEY
         proxyManaged: true
         inject:
-          - {domain: aiplatform.googleapis.com, header: x-goog-api-key, format: "%s"}
           - {domain: generativelanguage.googleapis.com, header: x-goog-api-key, format: "%s"}
-          - {domain: oauth2.googleapis.com, header: x-goog-api-key, format: "%s"}
-          - {domain: vertexai.googleapis.com, header: x-goog-api-key, format: "%s"}
   - type: com.docker.sandbox/credential@1
     optional: true
     description: Groq API access
@@ -134,6 +134,17 @@ capabilities:
         proxyManaged: true
         inject:
           - {domain: api.groq.com, header: Authorization, format: "Bearer %s"}
+  - type: com.docker.sandbox/credential@1
+    optional: true
+    description: Mistral API access
+    config:
+      service: mistral
+      phase: runtime
+      apiKey:
+        name: MISTRAL_API_KEY
+        proxyManaged: true
+        inject:
+          - {domain: api.mistral.ai, header: Authorization, format: "Bearer %s"}
   # API key only: the 1.x example's oauth block rendered a ChatGPT token
   # into auth.json, which v2 does not read (see the header comment).
   - type: com.docker.sandbox/credential@1
@@ -147,7 +158,6 @@ capabilities:
         proxyManaged: true
         inject:
           - {domain: api.openai.com, header: Authorization, format: "Bearer %s"}
-          - {domain: openai.com, header: Authorization, format: "Bearer %s"}
   - type: com.docker.sandbox/credential@1
     optional: true
     description: Anthropic API access
@@ -159,8 +169,6 @@ capabilities:
         proxyManaged: true
         inject:
           - {domain: api.anthropic.com, header: x-api-key, format: "%s"}
-          - {domain: claude.ai, header: x-api-key, format: "%s"}
-          - {domain: console.anthropic.com, header: x-api-key, format: "%s"}
   - type: com.docker.sandbox/credential@1
     optional: true
     description: OpenRouter API access
@@ -183,6 +191,24 @@ capabilities:
         proxyManaged: true
         inject:
           - {domain: api.x.ai, header: Authorization, format: "Bearer %s"}
+  # OpenCode Go and Zen (the opencode and opencode-go providers) serve every
+  # model from opencode.ai/inference, each through its own SDK, so the one
+  # key travels in three header styles: Bearer (OpenAI-compatible),
+  # x-api-key (Anthropic) and x-goog-api-key (Google), as listed in the
+  # models.opencode.ai catalog.
+  - type: com.docker.sandbox/credential@1
+    optional: true
+    description: OpenCode Go and Zen access
+    config:
+      service: opencode
+      phase: runtime
+      apiKey:
+        name: OPENCODE_API_KEY
+        proxyManaged: true
+        inject:
+          - {domain: opencode.ai, header: Authorization, format: "Bearer %s"}
+          - {domain: opencode.ai, header: x-api-key, format: "%s"}
+          - {domain: opencode.ai, header: x-goog-api-key, format: "%s"}
   - type: com.docker.sandbox/lifecycle@1
     config:
       install:

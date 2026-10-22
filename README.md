@@ -14,8 +14,9 @@ What the kit provides:
 - OpenCode v2 pinned to one release per build, on the
   `dhi.io/sbx-templates:opencode-docker` base (bash, git, CA store, the
   `agent` user with sudo, node and npm, Docker engine).
-- Seven optional, proxy-managed provider API keys: Anthropic, OpenAI,
-  Google, Groq, OpenRouter, xAI and GitHub (Copilot).
+- Nine optional, proxy-managed provider API keys: OpenCode (Go and Zen),
+  Anthropic, OpenAI, Google, Mistral, Groq, OpenRouter, xAI and GitHub
+  (Copilot).
 - Scoped egress for those providers, opencode.ai, npm and GitHub assets.
 - Registration of the sandbox MCP gateway in `opencode.json` when MCP is
   enabled, headless (`opencode run`), interactive and ACP session verbs,
@@ -45,12 +46,32 @@ Bind the provider keys you use as sandbox secrets on the host, for example:
 sbx secret set anthropic --sandbox oc2 -t "<your key>"
 ```
 
-The service names are `anthropic`, `openai`, `google`, `groq`,
-`openrouter`, `xai` and `github`. Inside the sandbox, the matching variables
-(`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_GENERATIVE_AI_API_KEY`,
-`GROQ_API_KEY`, `OPENROUTER_API_KEY`, `XAI_API_KEY`, `GITHUB_TOKEN`) hold
-sentinels; the proxy substitutes the real values on the provider hosts, so
-the keys never enter the sandbox.
+| Service | Provider | Variable | Key sent to |
+|---|---|---|---|
+| `opencode` | OpenCode Go and Zen | `OPENCODE_API_KEY` | `opencode.ai` |
+| `anthropic` | Anthropic | `ANTHROPIC_API_KEY` | `api.anthropic.com` |
+| `openai` | OpenAI | `OPENAI_API_KEY` | `api.openai.com` |
+| `google` | Google AI (Gemini API) | `GOOGLE_GENERATIVE_AI_API_KEY` | `generativelanguage.googleapis.com` |
+| `mistral` | Mistral | `MISTRAL_API_KEY` | `api.mistral.ai` |
+| `groq` | Groq | `GROQ_API_KEY` | `api.groq.com` |
+| `openrouter` | OpenRouter | `OPENROUTER_API_KEY` | `openrouter.ai` |
+| `xai` | xAI | `XAI_API_KEY` | `api.x.ai` |
+| `github` | GitHub Copilot | `GITHUB_TOKEN` | the Copilot API hosts, `github.com`, `api.github.com`, `raw.githubusercontent.com` |
+
+Inside the sandbox, the variables hold sentinels; the proxy substitutes the
+real values on the listed hosts, so the keys never enter the sandbox. When
+it creates a sandbox, `sbx` lists these services and asks which to approve;
+an unbound or unapproved one is skipped.
+
+- Without an `opencode` key, OpenCode still offers its free models, which
+  use a public key.
+- `github` is the same host secret `sbx` uses for Git over HTTPS
+  (`sbx secret set github …`). Approving it here also sends that token to
+  the Copilot hosts, and makes it ambient auth for `gh` and `git` at the
+  GitHub hosts.
+- Other providers and OAuth logins (ChatGPT, Copilot) can be set up inside
+  the sandbox with `opencode auth login`; those credentials are stored in
+  the sandbox itself.
 
 ## Version policy
 

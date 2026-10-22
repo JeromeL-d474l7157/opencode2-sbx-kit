@@ -36,7 +36,8 @@ sbx run ./opencode2-sbx-kit --name oc2 .
 ```
 
 `sbx` builds the kit when it creates the sandbox and reuses the cached
-build while the kit source and its arguments are unchanged.
+build while the kit source and its arguments are unchanged. The kit
+registers as the agent `opencode2-sbx-kit`, after its directory name.
 
 Bind the provider keys you use as sandbox secrets on the host, for example:
 
@@ -146,10 +147,11 @@ go run ./cmd/kit-tck validate --layout kit-oci "$(jq -r '.manifests[0].digest' k
 ## Smoke tests
 
 `tests/smoke.sh` runs on the host (bash: Git Bash or WSL on Windows) and
-checks a sandbox through `sbx exec`:
+checks a sandbox through `sbx exec`. From the directory that contains
+`opencode2-sbx-kit/`, like the `sbx run` commands above:
 
 ```console
-tests/smoke.sh oc2 2.1.2
+opencode2-sbx-kit/tests/smoke.sh oc2 2.1.2
 ```
 
 It checks the version, the `agent` user, that auto-update is disabled, that
@@ -158,7 +160,7 @@ MCP gateway entry (when MCP is enabled) and the detected providers. To also
 send one headless prompt, which spends tokens:
 
 ```console
-SMOKE_PROMPT=1 SMOKE_MODEL=anthropic/claude-haiku-4-5 tests/smoke.sh oc2 2.1.2
+SMOKE_PROMPT=1 SMOKE_MODEL=anthropic/claude-haiku-4-5 opencode2-sbx-kit/tests/smoke.sh oc2 2.1.2
 ```
 
 With `SMOKE_RUNNER=docker`, the same checks run against a container started
@@ -166,8 +168,34 @@ from the kit image, minus the ones only a sandbox runtime can satisfy:
 
 ```console
 docker run -d --name oc2 --entrypoint sleep opencode2-kit:2.1.2 infinity
-SMOKE_RUNNER=docker tests/smoke.sh oc2 2.1.2
+SMOKE_RUNNER=docker opencode2-sbx-kit/tests/smoke.sh oc2 2.1.2
 ```
+
+## Troubleshooting
+
+**`OCI exporter is not supported for the docker driver`** when `sbx run`
+builds the kit: the host's Docker engine uses the default `docker` build
+driver without the containerd image store. Either build kits in a builder
+sandbox instead of the host engine:
+
+```console
+SBX_KIT_BUILDER=sandbox sbx run ./opencode2-sbx-kit --name oc2 .
+```
+
+(`$env:SBX_KIT_BUILDER = "sandbox"` in PowerShell; `sbx kit builder status`
+shows the builder sandbox), or turn on "Use containerd for pulling and
+storing images" in Docker Desktop's settings.
+
+**`unsupported capability type com.docker.sandbox/agent-context@2`**: the
+installed `sbx` predates that capability version. This kit declares
+`agent-context@1`, like Docker's published kits; the error means the
+descriptor in use is an older revision of this kit.
+
+**`"<name>" is not an existing sandbox, known agent, or explicit sandbox
+kit reference`** right after a successful build: `sbx` registers a local
+kit under its directory name in lowercase, then looks it up with the
+original case. Keep the kit directory name lowercase (as
+`opencode2-sbx-kit` is), or run the registered agent by its lowercase name.
 
 ## Files
 
@@ -175,5 +203,5 @@ SMOKE_RUNNER=docker tests/smoke.sh oc2 2.1.2
 |---|---|
 | `opencode2.yaml` | Kit descriptor (v3) |
 | `opencode2.dockerfile` | Image recipe, paired with the descriptor by name |
+| `opencode2-context.md` | Agent context, written to `~/.config/opencode/AGENTS.md` |
 | `tests/smoke.sh` | Post-creation smoke tests |
-| `PLAN.md` | Implementation plan (in French) |

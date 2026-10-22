@@ -261,14 +261,11 @@ capabilities:
     config:
       path: /home/agent/.config/opencode/skills
 
-  - type: com.docker.sandbox/agent-context@2
+  # @1, not the spec example's @2: released sbx versions refuse a required
+  # agent-context@2, and Docker's published kits (sbx-kit-opencode,
+  # sbx-kit-claude) still declare @1 with a staged contentFile.
+  - type: com.docker.sandbox/agent-context@1
     config:
       filename: AGENTS.md
       directory: /home/agent/.config/opencode
-      content: |
-        # OpenCode
-
-        This sandbox runs OpenCode v2, a multi-provider coding agent. Provider
-        API keys are proxy-managed sentinels in the usual environment variables
-        (ANTHROPIC_API_KEY, OPENAI_API_KEY, ...); the proxy substitutes the real
-        values on the provider hosts.
+      contentFile: ./opencode2-context.md

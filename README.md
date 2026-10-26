@@ -207,6 +207,18 @@ SBX_KIT_BUILDER=sandbox sbx run ./opencode2-sbx-kit --name oc2 .
 shows the builder sandbox), or turn on "Use containerd for pulling and
 storing images" in Docker Desktop's settings.
 
+**`no space left on device`** in the builder sandbox, usually at the
+`RUN npm install` step while it mounts the base image: the disk of the
+builder sandbox (`sbx-kit-builder`) is full. Its Docker engine store doubles
+as the kit build cache, and the `opencode-docker` base alone is about
+650 MB compressed. Removing the builder reclaims the cache; the next build
+recreates it:
+
+```console
+sbx kit builder status
+sbx kit builder rm
+```
+
 **`unsupported capability type com.docker.sandbox/agent-context@2`**: the
 installed `sbx` predates that capability version. This kit declares
 `agent-context@1`, like Docker's published kits; the error means the
